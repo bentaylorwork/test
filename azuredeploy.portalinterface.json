@@ -1,46 +1,10 @@
-{
-    "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
     "handler": "Microsoft.Azure.CreateUIDef",
     "version": "0.1.2-preview",
     "parameters": {
         "basics": [
-            {
-                "name": "networkingInfo",
-                "type": "Microsoft.Common.TextBlock",
-                "visible": true,
-                "options": {
-                    "text": "The below details can be found in the UKFast's Tech DB.",
-                    "link": {
-                        "label": "",
-                        "uri": ""
-                    }
-                }
-            },
-            {
-                "name": "ukFastCustomerId",
-                "type": "Microsoft.Common.TextBox",
-                "label": "UKFast Customer ID",
-                "defaultValue": "",
-                "toolTip": "UKfast Customer ID taken from Tech DB.",
-                "constraints": {
-                    "required": true
-                }
-            },
-            {
-                "name": "ukFastCustomername",
-                "type": "Microsoft.Common.TextBox",
-                "label": "UKFast Customer Name",
-                "defaultValue": "",
-                "toolTip": "UKfast Customer Name taken from Tech DB. This should be abbreviated from example UKFast becomes ukf.",
-                "constraints": {
-                    "required": true
-                }
-            }
+            {}
         ],
         "steps": [],
-        "outputs": {
-            "customerId": "[basics('ukFastCustomerId')]",
-            "customerName": "[basics('ukFastCustomerName')]"
-        }
+        "outputs": {}
     }
 }
