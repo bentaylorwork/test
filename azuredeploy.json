@@ -13,47 +13,6 @@
             "metadata": {
                 "description": "description"
             }
-        },
-        "location": {
-            "type": "string",
-            "metadata": {
-                "description": "(Required)"
-            }
-        },
-        "listOfAllowedLocations": {
-            "type": "array",
-            "defaultValue": [
-                "uksouth",
-                "ukwest"
-            ],
-            "metadata": {
-                "description": "(Optional) An array of locations where Resource and Resource Groups will be permitted to be deployed to. Global resources like DNS are excluded from this policy. If no value is provided, it defaults to the auzre regions of uksouth and ukwest."
-            }
-        },
-        "costRestriction": {
-            "defaultValue": "small",
-            "type": "string",
-            "allowedValues": [
-                "small",
-                "medium",
-                "large"
-            ],
-            "metadata": {
-                "description": "(Optional) An array of allowed small VM SKU's. If no value is provided, it defaults to a pre-defined list."
-            }
-        },
-        "effect": {
-            "type": "string",
-            "defaultValue": "Deny",
-            "allowedValues": [
-                "Audit",
-                "Deny",
-                "Disabled"
-            ],
-            "metadata": {
-                "displayName": "Effect",
-                "description": "Enable or disable the execution of the policy"
-            }
         }
     },
     "variables": {
