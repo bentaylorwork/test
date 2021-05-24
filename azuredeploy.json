@@ -1,0 +1,770 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "customerId": {
+            "type": "string",
+            "metadata": {
+                "description": "description"
+            }
+        },
+        "customerName": {
+            "type": "string",
+            "metadata": {
+                "description": "description"
+            }
+        },
+        "location": {
+            "type": "string",
+            "metadata": {
+                "description": "(Required)"
+            }
+        },
+        "listOfAllowedLocations": {
+            "type": "array",
+            "defaultValue": [
+                "uksouth",
+                "ukwest"
+            ],
+            "metadata": {
+                "description": "(Optional) An array of locations where Resource and Resource Groups will be permitted to be deployed to. Global resources like DNS are excluded from this policy. If no value is provided, it defaults to the auzre regions of uksouth and ukwest."
+            }
+        },
+        "costRestriction": {
+            "defaultValue": "small",
+            "type": "string",
+            "allowedValues": [
+                "small",
+                "medium",
+                "large"
+            ],
+            "metadata": {
+                "description": "(Optional) An array of allowed small VM SKU's. If no value is provided, it defaults to a pre-defined list."
+            }
+        },
+        "effect": {
+            "type": "string",
+            "defaultValue": "Deny",
+            "allowedValues": [
+                "Audit",
+                "Deny",
+                "Disabled"
+            ],
+            "metadata": {
+                "displayName": "Effect",
+                "description": "Enable or disable the execution of the policy"
+            }
+        }
+    },
+    "variables": {
+        "tags": {
+
+        },
+        "resourceGroups": {
+            "management": "[concat('rg-ukf-lz-acceleration-management-', subscription().subscriptionId)]",
+            "networking": "[concat('rg-ukf-lz-acceleration-networking-', subscription().subscriptionId)]",
+            "backup": "[concat('rg-ukf-lz-acceleration-backup-', subscription().subscriptionId)]"
+        },
+        "recoveryServicesVault": {
+            "name": "[concat('rs-', subscription().subscriptionId)]"
+        },
+        "logAnalytics": {
+            "name": "[concat('la-', subscription().subscriptionId)]"
+        },
+        "keyVault": {
+            "name": "[take(concat('kv-', subscription().subscriptionId), 24)]"
+        },
+        "vnet": {
+            "name": "[concat('vnet-', subscription().subscriptionId)]",
+            "listOfExceptedSubnets": [
+                "GatewaySubnet",
+                "AzureFirewallSubnet"
+            ]
+        },
+        "policy": {
+            "initiativeName": "[take(concat('UKfast-Acceleration-Initiative-', subscription().subscriptionId), 64)]"
+        },
+        "cost": {
+            "internal": {
+                "small": [
+                    "Standard_B1ls",
+                    "Standard_DS1_v2",
+                    "Standard_F1s",
+                    "Standard_A1_v2",
+                    "Standard_D1_v2"
+                ],
+                "medium": [
+                    "Standard_D2_v2",
+                    "Standard_A2",
+                    "Standard_D2_v2_Promo",
+                    "Standard_B2s",
+                    "Standard_B2ms",
+                    "Standard_D11_v2"
+                ],
+                "large": [
+                    "Standard_E4-2ds_v4",
+                    "Standard_B4ms",
+                    "Standard_DS12_v2_Promo",
+                    "Standard_E4-2s_v4",
+                    "Standard_D12_v2_Promo",
+                    "Standard_E4_v4",
+                    "Standard_E4s_v4"
+                ]
+            }
+        },
+        "vm": {
+            "small": "[variables('cost').internal.small]",
+            "medium": "[union(variables('cost').internal.small, variables('cost').internal.medium)]",
+            "large": "[union(variables('cost').internal.small, variables('cost').internal.medium, variables('cost').internal.large)]"
+        }
+    },
+    "functions": [],
+    "resources": [
+        // Policy: Allowed Resources Location
+        {
+            "type": "Microsoft.Authorization/policyDefinitions",
+            "name": "ukf-acceleration-allowed-resource-location",
+            "apiVersion": "2020-09-01",
+            "properties": {
+                "displayName": "UKfast Acceleration: Allowed Resource Location.",
+                "policyType": "Custom",
+                "mode": "All",
+                "description": "This policy enables you to restrict the locations your organization can specify when deploying resources. Use to enforce your geo-compliance requirements. Excludes resource groups, Microsoft.AzureActiveDirectory/b2cDirectories, and resources that use the 'global' region.",
+                "metadata": {
+                    "category": "UKfast Acceleration"
+                },
+                "parameters": {
+                    "listOfAllowedLocations": {
+                        "type": "Array",
+                        "metadata": {
+                            "description": "The list of locations that can be specified when deploying resources.",
+                            "strongType": "location",
+                            "displayName": "Allowed locations"
+                        }
+                    },
+                    "effect": {
+                        "type": "string",
+                        "defaultValue": "Deny",
+                        "allowedValues": [
+                            "Audit",
+                            "Deny",
+                            "Disabled"
+                        ],
+                        "metadata": {
+                            "displayName": "Effect",
+                            "description": "Enable or disable the execution of the policy"
+                        }
+                    }
+                },
+                "policyRule": {
+                    "if": {
+                        "allOf": [
+                            {
+                                "field": "location",
+                                "notIn": "[[parameters('listOfAllowedLocations')]"
+                            },
+                            {
+                                "field": "location",
+                                "notEquals": "global"
+                            },
+                            {
+                                "field": "type",
+                                "notEquals": "Microsoft.AzureActiveDirectory/b2cDirectories"
+                            }
+                        ]
+                    },
+                    "then": {
+                        "effect": "[[parameters('effect')]"
+                    }
+                }
+            }
+        },
+        // Policy: Allowed Resource Group Location
+        {
+            "type": "Microsoft.Authorization/policyDefinitions",
+            "name": "ukf-acceleration-allowed-resource-group-location",
+            "apiVersion": "2020-09-01",
+            "properties": {
+                "displayName": "UKfast Acceleration: Allowed Resource Group Location.",
+                "policyType": "Custom",
+                "mode": "All",
+                "description": "This policy enables you to restrict the locations your organization can create resource groups in. Use to enforce your geo-compliance requirements.",
+                "metadata": {
+                    "category": "UKfast Acceleration"
+                },
+                "parameters": {
+                    "listOfAllowedLocations": {
+                        "type": "Array",
+                        "metadata": {
+                            "description": "The list of locations that can be specified when deploying resource groups.",
+                            "strongType": "location",
+                            "displayName": "Allowed locations"
+                        }
+                    },
+                    "effect": {
+                        "type": "string",
+                        "defaultValue": "Deny",
+                        "allowedValues": [
+                            "Audit",
+                            "Deny",
+                            "Disabled"
+                        ],
+                        "metadata": {
+                            "displayName": "Effect",
+                            "description": "Enable or disable the execution of the policy"
+                        }
+                    }
+                },
+                "policyRule": {
+                    "if": {
+                        "allOf": [
+                            {
+                                "field": "type",
+                                "equals": "Microsoft.Resources/subscriptions/resourceGroups"
+                            },
+                            {
+                                "field": "location",
+                                "notIn": "[[parameters('listOfAllowedLocations')]"
+                            }
+                        ]
+                    },
+                    "then": {
+                        "effect": "[[parameters('effect')]"
+                    }
+                }
+            }
+        },
+        // Policy: Disallow RDP from the Internet
+        {
+            "type": "Microsoft.Authorization/policyDefinitions",
+            "name": "ukf-acceleration-deny-rdp-from-the-internet",
+            "apiVersion": "2020-09-01",
+            "properties": {
+                "displayName": "UKfast Acceleration: Deny RDP from the internet.",
+                "policyType": "Custom",
+                "mode": "All",
+                "description": "This policy denys any network security rule that allows RDP access from Internet.",
+                "metadata": {
+                    "category": "UKfast Acceleration"
+                },
+                "parameters": {
+                    "effect": {
+                        "type": "string",
+                        "defaultValue": "Deny",
+                        "allowedValues": [
+                            "Audit",
+                            "Deny",
+                            "Disabled"
+                        ],
+                        "metadata": {
+                            "displayName": "Effect",
+                            "description": "Enable or disable the execution of the policy"
+                        }
+                    }
+                },
+                "policyRule": {
+                    "if": {
+                        "allOf": [
+                            {
+                                "field": "type",
+                                "equals": "Microsoft.Network/networkSecurityGroups/securityRules"
+                            },
+                            {
+                                "allOf": [
+                                    {
+                                        "field": "Microsoft.Network/networkSecurityGroups/securityRules/access",
+                                        "equals": "Allow"
+                                    },
+                                    {
+                                        "field": "Microsoft.Network/networkSecurityGroups/securityRules/direction",
+                                        "equals": "Inbound"
+                                    },
+                                    {
+                                        "anyOf": [
+                                            {
+                                                "field": "Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRange",
+                                                "equals": "*"
+                                            },
+                                            {
+                                                "field": "Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRange",
+                                                "equals": "3389"
+                                            },
+                                            {
+                                                "value": "[[if(and(not(empty(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRange'))), contains(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRange'),'-')), and(lessOrEquals(int(first(split(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRange'), '-'))),3389),greaterOrEquals(int(last(split(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRange'), '-'))),3389)), 'false')]",
+                                                "equals": "true"
+                                            },
+                                            {
+                                                "count": {
+                                                    "field": "Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRanges[*]",
+                                                    "where": {
+                                                        "value": "[[if(and(not(empty(first(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRanges[*]')))), contains(first(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRanges[*]')),'-')), and(lessOrEquals(int(first(split(first(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRanges[*]')), '-'))),3389),greaterOrEquals(int(last(split(first(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRanges[*]')), '-'))),3389)) , 'false')]",
+                                                        "equals": "true"
+                                                    }
+                                                },
+                                                "greater": 0
+                                            },
+                                            {
+                                                "not": {
+                                                    "field": "Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRanges[*]",
+                                                    "notEquals": "*"
+                                                }
+                                            },
+                                            {
+                                                "not": {
+                                                    "field": "Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRanges[*]",
+                                                    "notEquals": "3389"
+                                                }
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "anyOf": [
+                                            {
+                                                "field": "Microsoft.Network/networkSecurityGroups/securityRules/sourceAddressPrefix",
+                                                "equals": "*"
+                                            },
+                                            {
+                                                "field": "Microsoft.Network/networkSecurityGroups/securityRules/sourceAddressPrefix",
+                                                "equals": "Internet"
+                                            },
+                                            {
+                                                "not": {
+                                                    "field": "Microsoft.Network/networkSecurityGroups/securityRules/sourceAddressPrefixes[*]",
+                                                    "notEquals": "*"
+                                                }
+                                            },
+                                            {
+                                                "not": {
+                                                    "field": "Microsoft.Network/networkSecurityGroups/securityRules/sourceAddressPrefixes[*]",
+                                                    "notEquals": "Internet"
+                                                }
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    "then": {
+                        "effect": "[[parameters('effect')]"
+                    }
+                }
+            }
+        },
+        // Policy: Disallow SSH from the Internet
+        {
+            "type": "Microsoft.Authorization/policyDefinitions",
+            "name": "ukf-acceleration-deny-ssh-from-the-internet",
+            "apiVersion": "2020-09-01",
+            "properties": {
+                "displayName": "UKfast Acceleration: Deny SSH from the internet.",
+                "policyType": "Custom",
+                "mode": "All",
+                "description": "This policy denys any network security rule that allows SSH access from Internet.",
+                "metadata": {
+                    "category": "UKfast Acceleration"
+                },
+                "parameters": {
+                    "effect": {
+                        "type": "string",
+                        "defaultValue": "Deny",
+                        "allowedValues": [
+                            "Audit",
+                            "Deny",
+                            "Disabled"
+                        ],
+                        "metadata": {
+                            "displayName": "Effect",
+                            "description": "Enable or disable the execution of the policy"
+                        }
+                    }
+                },
+                "policyRule": {
+                    "if": {
+                        "allOf": [
+                            {
+                                "field": "type",
+                                "equals": "Microsoft.Network/networkSecurityGroups/securityRules"
+                            },
+                            {
+                                "allOf": [
+                                    {
+                                        "field": "Microsoft.Network/networkSecurityGroups/securityRules/access",
+                                        "equals": "Allow"
+                                    },
+                                    {
+                                        "field": "Microsoft.Network/networkSecurityGroups/securityRules/direction",
+                                        "equals": "Inbound"
+                                    },
+                                    {
+                                        "anyOf": [
+                                            {
+                                                "field": "Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRange",
+                                                "equals": "*"
+                                            },
+                                            {
+                                                "field": "Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRange",
+                                                "equals": "22"
+                                            },
+                                            {
+                                                "value": "[[if(and(not(empty(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRange'))), contains(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRange'),'-')), and(lessOrEquals(int(first(split(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRange'), '-'))),22),greaterOrEquals(int(last(split(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRange'), '-'))),22)), 'false')]",
+                                                "equals": "true"
+                                            },
+                                            {
+                                                "count": {
+                                                    "field": "Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRanges[*]",
+                                                    "where": {
+                                                        "value": "[[if(and(not(empty(first(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRanges[*]')))), contains(first(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRanges[*]')),'-')), and(lessOrEquals(int(first(split(first(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRanges[*]')), '-'))),22),greaterOrEquals(int(last(split(first(field('Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRanges[*]')), '-'))),22)) , 'false')]",
+                                                        "equals": "true"
+                                                    }
+                                                },
+                                                "greater": 0
+                                            },
+                                            {
+                                                "not": {
+                                                    "field": "Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRanges[*]",
+                                                    "notEquals": "*"
+                                                }
+                                            },
+                                            {
+                                                "not": {
+                                                    "field": "Microsoft.Network/networkSecurityGroups/securityRules/destinationPortRanges[*]",
+                                                    "notEquals": "22"
+                                                }
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "anyOf": [
+                                            {
+                                                "field": "Microsoft.Network/networkSecurityGroups/securityRules/sourceAddressPrefix",
+                                                "equals": "*"
+                                            },
+                                            {
+                                                "field": "Microsoft.Network/networkSecurityGroups/securityRules/sourceAddressPrefix",
+                                                "equals": "Internet"
+                                            },
+                                            {
+                                                "not": {
+                                                    "field": "Microsoft.Network/networkSecurityGroups/securityRules/sourceAddressPrefixes[*]",
+                                                    "notEquals": "*"
+                                                }
+                                            },
+                                            {
+                                                "not": {
+                                                    "field": "Microsoft.Network/networkSecurityGroups/securityRules/sourceAddressPrefixes[*]",
+                                                    "notEquals": "Internet"
+                                                }
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    "then": {
+                        "effect": "[[parameters('effect')]"
+                    }
+                }
+            }
+        },
+        // Policy: Subnets should be associated with a Network Security Group
+        {
+            "type": "Microsoft.Authorization/policyDefinitions",
+            "name": "ukf-acceleration-subnets-associated-with-NSG",
+            "apiVersion": "2020-09-01",
+            "properties": {
+                "displayName": "UKfast Acceleration: Subnets should be associated with a Network Security Group",
+                "policyType": "Custom",
+                "mode": "All",
+                "description": "This policy ensures every subnet has an NSG associated with it",
+                "metadata": {
+                    "category": "UKfast Acceleration"
+                },
+                "parameters": {
+                    "effect": {
+                        "type": "string",
+                        "defaultValue": "Deny",
+                        "allowedValues": [
+                            "Audit",
+                            "Deny",
+                            "Disabled"
+                        ],
+                        "metadata": {
+                            "displayName": "Effect",
+                            "description": "Enable or disable the execution of the policy"
+                        }
+                    },
+                    "listOfExceptedSubnets": {
+                        "type": "Array",
+                        "metadata": {
+                            "description": "The list of subnets which are exempt from having a network security group assigned.",
+                            "strongType": "name",
+                            "displayName": "Excepted Subnets"
+                        }
+                    }
+                },
+                "policyRule": {
+                    "if": {
+                        "allOf": [
+                            {
+                                "field": "type",
+                                "equals": "Microsoft.Network/virtualNetworks/subnets"
+                            },
+                            {
+                                "field": "name",
+                                "notIn": "[[parameters('listOfExceptedSubnets')]"
+                            },
+                            {
+                                "field": "Microsoft.Network/virtualNetworks/subnets/networkSecurityGroup.id",
+                                "exists": "false"
+                            }
+                        ]
+                    },
+                    "then": {
+                        "effect": "[[parameters('effect')]",
+                        "details": {
+                            "type": "Microsoft.Security/assessments",
+                            "name": "eade5b56-eefd-444f-95c8-23f29e5d93cb",
+                            "existenceCondition": {
+                                "field": "Microsoft.Security/assessments/status.code",
+                                "in": [
+                                    "NotApplicable",
+                                    "Healthy"
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        // Policy: Disallow creation of vnet
+        {
+            "type": "Microsoft.Authorization/policyDefinitions",
+            "name": "ukf-acceleration-disallow-vnet-creation",
+            "apiVersion": "2020-09-01",
+            "properties": {
+                "displayName": "UKfast Acceleration: Disallow vNet Creation.",
+                "policyType": "Custom",
+                "mode": "All",
+                "description": "This policy disallows the creation of virtual networks.",
+                "metadata": {
+                    "category": "UKfast Acceleration"
+                },
+                "parameters": {
+                    "effect": {
+                        "type": "string",
+                        "defaultValue": "Deny",
+                        "allowedValues": [
+                            "Audit",
+                            "Deny",
+                            "Disabled"
+                        ],
+                        "metadata": {
+                            "displayName": "Effect",
+                            "description": "Enable or disable the execution of the policy"
+                        }
+                    }
+                },
+                "policyRule": {
+                    "if": {
+                        "allOf": [
+                            {
+                                "field": "type",
+                                "equals": "Microsoft.Network/virtualNetworks"
+                            }
+                        ]
+                    },
+                    "then": {
+                        "effect": "[[parameters('effect')]"
+                    }
+                }
+            }
+        },
+        // Policy: Allowed VM sizes
+        {
+            "type": "Microsoft.Authorization/policyDefinitions",
+            "name": "ukf-acceleration-allowed-vm-sizes",
+            "apiVersion": "2020-09-01",
+            "properties": {
+                "displayName": "UKfast Acceleration: Allowed virtual machine size SKUs",
+                "policyType": "Custom",
+                "mode": "Indexed",
+                "description": "This policy enables you to specify a set of virtual machine size SKUs that your organization can deploy.",
+                "metadata": {
+                    "version": "1.0.1",
+                    "category": "UKfast Acceleration"
+                },
+                "parameters": {
+                    "listOfAllowedSKUs": {
+                        "type": "Array",
+                        "metadata": {
+                            "description": "A list of VM SKUs that can be deployed."
+                        }
+                    }
+                },
+                "policyRule": {
+                    "if": {
+                        "allOf": [
+                            {
+                                "field": "type",
+                                "equals": "Microsoft.Compute/virtualMachines"
+                            },
+                            {
+                                "not": {
+                                    "field": "Microsoft.Compute/virtualMachines/sku.name",
+                                    "in": "[[parameters('listOfAllowedSKUs')]"
+                                }
+                            }
+                        ]
+                    },
+                    "then": {
+                        "effect": "Deny"
+                    }
+                }
+            }
+        },
+        // Policy: UKfast Acceleration Initiative
+        {
+            "type": "Microsoft.Authorization/policySetDefinitions",
+            "name": "[variables('policy').initiativeName]",
+            "apiVersion": "2018-03-01",
+            "dependsOn": [
+                "ukf-acceleration-allowed-resource-location",
+                "ukf-acceleration-allowed-resource-group-location",
+                "ukf-acceleration-deny-rdp-from-the-internet",
+                "ukf-acceleration-deny-ssh-from-the-internet",
+                "ukf-acceleration-subnets-associated-with-NSG",
+                "ukf-acceleration-disallow-vnet-creation",
+                "ukf-acceleration-allowed-vm-sizes"
+            ],
+            "properties": {
+                "displayName": "[concat('Ukfast Acceleration Landingzone - ', subscription().subscriptionId)]",
+                "policyType": "Custom",
+                "description": "A set of policys fo Ukfast that help accelerate isolated single workload deployments in Azure.",
+                "metadata": {
+                    "category": "UKfast Acceleration"
+                },
+                "policyDefinitions": [
+
+                    // Allowed Resource Location
+                    {
+                        "policyDefinitionId": "[resourceId('Microsoft.Authorization/policyDefinitions', 'ukf-acceleration-allowed-resource-location')]",
+                        "parameters": {
+                            "listOfAllowedLocations": {
+                                "value": "[parameters('listOfAllowedLocations')]"
+                            },
+                            "effect": {
+                                "value": "[parameters('effect')]"
+                            }
+                        }
+                    },
+                    // Allowed Resource Group Location
+                    {
+                        "policyDefinitionId": "[resourceId('Microsoft.Authorization/policyDefinitions', 'ukf-acceleration-allowed-resource-group-location')]",
+                        "parameters": {
+                            "listOfAllowedLocations": {
+                                "value": "[parameters('listOfAllowedLocations')]"
+                            },
+                            "effect": {
+                                "value": "[parameters('effect')]"
+                            }
+                        }
+                    },
+                    // Deny RDP
+                    {
+                        "policyDefinitionId": "[resourceId('Microsoft.Authorization/policyDefinitions', 'ukf-acceleration-deny-rdp-from-the-internet')]",
+                        "parameters": {
+                            "effect": {
+                                "value": "[parameters('effect')]"
+                            }
+                        }
+                    },
+                    // Deny SSH
+                    {
+                        "policyDefinitionId": "[resourceId('Microsoft.Authorization/policyDefinitions', 'ukf-acceleration-deny-ssh-from-the-internet')]",
+                        "parameters": {
+                            "effect": {
+                                "value": "[parameters('effect')]"
+                            }
+                        }
+                    },
+                    // Limit NSG
+                    {
+                        "policyDefinitionId": "[resourceId('Microsoft.Authorization/policyDefinitions', 'ukf-acceleration-subnets-associated-with-NSG')]",
+                        "parameters": {
+                            "listOfExceptedSubnets": {
+                                "value": "[variables('vnet').listOfExceptedSubnets]"
+                            },
+                            "effect": {
+                                "value": "[parameters('effect')]"
+                            }
+                        }
+                    },
+                    // Disallow vnet creation
+                    {
+                        "policyDefinitionId": "[resourceId('Microsoft.Authorization/policyDefinitions', 'ukf-acceleration-disallow-vnet-creation')]",
+                        "parameters": {
+                            "effect": {
+                                "value": "[parameters('effect')]"
+                            }
+                        }
+                    },
+                    // Allowed VM sizes
+                    {
+                        "policyDefinitionId": "[resourceId('Microsoft.Authorization/policyDefinitions', 'ukf-acceleration-allowed-vm-sizes')]",
+                        "parameters": {
+                            "listOfAllowedSKUs": {
+                                "value": "[variables('vm')[parameters('costRestriction')]]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        // Policy: Assign To Subscription
+        {
+            "type": "Microsoft.Authorization/policyAssignments",
+            "name": "UKfast-Acceleration-Initiative-policyAssignment",
+            "apiVersion": "2019-09-01",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[variables('policy').initiativeName]"
+            ],
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "properties": {
+                "displayName": "[concat('UKfast Acceleration - ' , subscription().subscriptionId)]",
+                "scope": "[subscription().id]",
+                "policyDefinitionId": "[resourceId('Microsoft.Authorization/policySetDefinitions', variables('policy').initiativeName)]"
+            }
+        },
+        // Deploy: Resource Groups
+        {
+            "type": "Microsoft.Resources/resourceGroups",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('resourceGroups').management]",
+            "location": "[parameters('Location')]",
+            "tags": "[variables('tags')]",
+            "properties": {}
+        },
+        {
+            "type": "Microsoft.Resources/resourceGroups",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('resourceGroups').networking]",
+            "location": "[parameters('Location')]",
+            "tags": "[variables('tags')]",
+            "properties": {}
+        },
+        {
+            "type": "Microsoft.Resources/resourceGroups",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('resourceGroups').backup]",
+            "location": "[parameters('Location')]",
+            "tags": "[variables('tags')]",
+            "properties": {}
+        }
+    ],
+    "outputs": {}
+}
