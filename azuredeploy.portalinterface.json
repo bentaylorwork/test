@@ -39,7 +39,7 @@
         "steps": [],
         "outputs": {
             "customerId": "[basics('ukFastCustomerId')]",
-            "customerName": "[basics('ukFastCustomerName')]",
+            "customerName": "[basics('ukFastCustomerName')]"
         }
     }
 }
